@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use reqwest::{Client, header::{Accept, Authorization, Bearer, Headers, qitem}, mime::{Mime, TopLevel, SubLevel}};
+use reqwest::{Client, header::{Accept, Authorization, Bearer, Headers, qitem}, mime};
 use serde_json;
 
+use config::Config;
 use error::{Error, Result};
 use types::*;
 
@@ -22,37 +23,36 @@ pub struct GitHub;
 
 // TODO: Yes the JSON parsing here is untyped, and that is on purpose. All the types for these GH
 // responses live in the github-api-client crate and it doesn't feel right for this crate to take
-// a dependency on that crate just to get those types in. Maybe we can revisit this in the future
+// a dependency on that crate just to get those types in. Alternatively, I could've copy/pasted
+// those types in here, but again, that feels bad. Maybe we can revisit this in the future
 // to see what a better way of sharing types between crates would look like (as this feels like
 // a common problem in our codebase) but for now, I'm doing it this way. The odds of GH changing
 // their response JSON seem low.
 impl OAuthProvider for GitHub {
-    fn authenticate(&self, client: &Client, code: &str) -> Result<String> {
+    fn authenticate(&self, config: &Config, client: &Client, code: &str) -> Result<String> {
         let url = format!(
             "{}?client_id={}&client_secret={}&code={}",
-            client.config.token_url,
-            client.config.client_id,
-            client.config.client_secret,
+            config.token_url,
+            config.client_id,
+            config.client_secret,
             code
         );
 
         let resp = client.post(&url).send().map_err(Error::HttpClient)?;
 
-        if resp.status.is_success() {
+        if resp.status().is_success() {
             let msg: serde_json::Value = resp.json().map_err(Error::HttpClient)?;
-            Ok(msg["access_token"])
+            Ok(msg["access_token"].to_string())
         } else {
             let body = resp.text().map_err(Error::HttpClient)?;
             Err(Error::HttpResponse(resp.status, body))
         }
     }
 
-    fn user(&self, client: &Client, token: &str) -> Result<User> {
+    fn user(&self, config: &Config, client: &Client, token: &str) -> Result<User> {
         let mut headers = Headers::new();
         headers.set(Accept(vec![
-            qitem(
-                Mime(TopLevel::Application, SubLevel::Json, vec![])
-            ),
+            qitem(mime::APPLICATION_JSON),
             qitem("application/vnd.github.v3+json".parse().unwrap()),
             qitem(
                 "application/vnd.github.machine-man-preview+json"
@@ -62,14 +62,14 @@ impl OAuthProvider for GitHub {
         ]));
         headers.set(Authorization(Bearer { token: token.to_string() }));
 
-        let resp = client.headers(headers).get(&client.config.user_url).send().map_err(Error::HttpClient)?;
+        let resp = client.headers(headers).get(&config.user_url).send().map_err(Error::HttpClient)?;
 
-        if resp.status.is_success() {
+        if resp.status().is_success() {
             let msg: serde_json::Value = resp.json().map_err(Error::HttpClient)?;
             let user = User {
-                id: user["id"].to_string(),
-                username: user["login"],
-                email: user["email"]
+                id: msg["id"].to_string(),
+                username: msg["login"].to_string(),
+                email: msg["email"].to_string()
             };
             Ok(user)
         } else {

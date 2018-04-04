@@ -14,14 +14,17 @@
 
 use reqwest;
 
+use config::Config;
+use error::Result;
+
 pub struct User {
     pub id: String,
     pub username: String,
-    pub email Option<String>
+    pub email: Option<String>,
 }
 
 pub trait OAuthProvider {
-    fn authenticate(&self, &reqwest::Client, &str) -> Result<String>;
-    fn user(&self, &reqwest::Client, &str) -> Result<User>;
+    fn authenticate(&self, &Config, &reqwest::Client, &str) -> Result<String>;
+    fn user(&self, &Config, &reqwest::Client, &str) -> Result<User>;
     fn name(&self) -> String;
 }

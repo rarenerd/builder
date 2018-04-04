@@ -14,9 +14,9 @@
 
 use std::env;
 
-use reqwest::header;
+use reqwest::{self, header};
 
-use config;
+use config::Config;
 use error::Result;
 use types::*;
 
@@ -39,9 +39,8 @@ impl Client {
                 client.proxy(p);
             } else {
                 println!(
-                    "Attempted to set a client proxy to {}, but that failed: {:?}",
+                    "Attempted to set a client proxy to {}, but that failed",
                     url,
-                    e
                 )
             }
         }
@@ -51,9 +50,8 @@ impl Client {
                 client.proxy(p);
             } else {
                 println!(
-                    "Attempted to set a client proxy to {}, but that failed: {:?}",
+                    "Attempted to set a client proxy to {}, but that failed",
                     url,
-                    e
                 )
             }
         }
