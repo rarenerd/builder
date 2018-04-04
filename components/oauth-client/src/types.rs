@@ -22,6 +22,6 @@ pub struct User {
 
 pub trait OAuthProvider {
     fn authenticate(&self, &reqwest::Client, &str) -> Result<String>;
-    fn user(&self, &reqwest::Client, String) -> Result<User>;
+    fn user(&self, &reqwest::Client, &str) -> Result<User>;
     fn name(&self) -> String;
 }

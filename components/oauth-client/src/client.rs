@@ -24,6 +24,7 @@ use types::*;
 pub struct Client {
     inner: reqwest::Client,
     provider: Box<OAuthProvider>,
+    pub config: Config,
 }
 
 impl Client {
@@ -60,6 +61,7 @@ impl Client {
         Client {
             inner: client.build().unwrap(),
             provider: provider,
+            config: config,
         }
     }
 

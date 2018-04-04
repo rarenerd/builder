@@ -14,19 +14,13 @@
 
 use std::error;
 use std::fmt;
-use std::io;
 
-use hyper;
-use serde_json;
+use reqwest;
 
 #[derive(Debug)]
 pub enum Error {
-    HttpClient(hyper::Error),
-    HttpClientParse(hyper::error::ParseError),
-    HttpResponse(hyper::status::StatusCode, String),
-    Hub(String), // making this a String on purpose to avoid a circular dependency on the github-api-client crate
-    IO(io::Error),
-    Serialization(serde_json::Error),
+    HttpClient(reqwest::Error),
+    HttpResponse(reqwest::StatusCode, String),
 }
 
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -34,40 +28,30 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let msg = match *self {
-            OAuthError::ApiClient(ref e) => format!("{}", e),
-            OAuthError::HttpClient(ref e) => format!("{}", e),
-            OAuthError::HttpClientParse(ref e) => format!("{}", e),
-            OAuthError::HttpResponse(ref code, ref response) => {
+            Error::HttpClient(ref e) => format!("{}", e),
+            Error::HttpResponse(ref code, ref response) => {
                 format!(
                     "Received a non-200 response, status={}, response={}",
                     code,
                     response
                 )
             }
-            OAuthError::Hub(ref e) => format!("{}", e),
-            OAuthError::IO(ref e) => format!("{}", e),
-            OAuthError::Serialization(ref e) => format!("{}", e),
         };
         write!(f, "{}", msg)
     }
 }
 
-impl error::Error for OAuthError {
+impl error::Error for Error {
     fn description(&self) -> &str {
         match *self {
-            OAuthError::ApiClient(ref err) => err.description(),
-            OAuthError::HttpClient(ref err) => err.description(),
-            OAuthError::HttpClientParse(ref err) => err.description(),
-            OAuthError::HttpResponse(_, _) => "Non-200 HTTP response.",
-            OAuthError::Hub(_) => "Error communicating with GitHub",
-            OAuthError::IO(ref err) => err.description(),
-            OAuthError::Serialization(ref err) => err.description(),
+            Error::HttpClient(ref err) => err.description(),
+            Error::HttpResponse(_, _) => "Non-200 HTTP response.",
         }
     }
 }
 
-impl From<io::Error> for OAuthError {
-    fn from(err: io::Error) -> Self {
-        OAuthError::IO(err)
-    }
-}
+// impl From<io::Error> for OAuthError {
+//     fn from(err: io::Error) -> Self {
+//         OAuthError::IO(err)
+//     }
+// }
