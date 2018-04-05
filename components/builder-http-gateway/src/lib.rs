@@ -22,6 +22,7 @@ extern crate bodyparser;
 extern crate builder_core as bldr_core;
 extern crate habitat_builder_protocol as protocol;
 extern crate habitat_core as core;
+extern crate habitat_depot_client as depot_client;
 extern crate habitat_net as hab_net;
 #[macro_use]
 extern crate hyper;
