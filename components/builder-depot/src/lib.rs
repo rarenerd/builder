@@ -15,6 +15,7 @@
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
+extern crate base64;
 extern crate bitbucket_api_client;
 extern crate habitat_builder_protocol as protocol;
 extern crate habitat_core as hab_core;
@@ -23,6 +24,8 @@ extern crate builder_core as bldr_core;
 extern crate builder_http_gateway as http_gateway;
 extern crate bodyparser;
 extern crate crypto;
+extern crate futures;
+extern crate github_api_client;
 extern crate hyper;
 extern crate iron;
 extern crate iron_test;
@@ -35,6 +38,8 @@ extern crate protobuf;
 extern crate regex;
 extern crate r2d2;
 extern crate router;
+extern crate rusoto_core as rusoto;
+extern crate rusoto_s3;
 extern crate segment_api_client;
 extern crate serde;
 #[macro_use]
@@ -49,8 +54,6 @@ extern crate url;
 extern crate walkdir;
 extern crate zmq;
 extern crate uuid;
-extern crate base64;
-extern crate github_api_client;
 
 pub mod config;
 pub mod error;
@@ -58,11 +61,13 @@ pub mod doctor;
 pub mod metrics;
 pub mod server;
 pub mod handlers;
+pub mod backend;
 
 pub use self::config::Config;
 pub use self::error::{Error, Result};
 
-use std::fs;
+use std::fs::{self, File};
+use std::io::{ BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use crypto::sha2::Sha256;
@@ -113,6 +118,14 @@ impl DepotUtil {
             ))
     }
 
+	fn write_archive(filename: &PathBuf, body: Vec<u8>) -> Result<PackageArchive> {
+		let file = File::create(&filename)?;
+		let mut write = BufWriter::new(file);
+		let _payload = write.write_all(&body);
+		Ok(PackageArchive::new(filename))
+	}
+
+
     // Return a formatted string representing the folder location for an archive.
     fn archive_parent<T: Identifiable>(&self, ident: &T) -> PathBuf {
         let mut digest = Sha256::new();
@@ -123,7 +136,7 @@ impl DepotUtil {
             format!("{:x}", output[1]),
         )
     }
-
+    
     fn packages_path(&self) -> PathBuf {
         Path::new(&self.config.path).join("pkgs")
     }

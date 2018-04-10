@@ -20,25 +20,31 @@ use std::result;
 
 use hab_core;
 use hab_core::package::{self, Identifiable};
+use rusoto_s3;
 use hab_net;
 use hyper;
 
 #[derive(Debug)]
 pub enum Error {
     BadPort(String),
+    BadBucket(rusoto_s3::ListBucketsError),
+    CaughtPanic(String, String),
     ChannelAlreadyExists(String),
     ChannelDoesNotExist(String),
     HabitatCore(hab_core::Error),
     HabitatNet(hab_net::error::LibError),
-    NetError(hab_net::NetError),
     HTTP(hyper::status::StatusCode),
     InvalidPackageIdent(String),
     IO(io::Error),
     MessageTypeNotFound,
+    NetError(hab_net::NetError),
     NoXFilename,
     NoFilePart,
     NulError(ffi::NulError),
+    ObjectError(rusoto_s3::ListObjectsError),
     PackageIsAlreadyInChannel(String, String),
+    PackageUpload(rusoto_s3::PutObjectError),
+    PackageDownload(rusoto_s3::GetObjectError),
     RemotePackageNotFound(package::PackageIdent),
     WriteSyncFailed,
 }
@@ -49,6 +55,10 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let msg = match *self {
             Error::BadPort(ref e) => format!("{} is an invalid port. Valid range 1-65535.", e),
+            Error::BadBucket(ref e) => format!("{}", e),
+            Error::CaughtPanic(ref msg, ref source) => {
+                format!("Caught a panic during upload: {}. {}", msg, source)
+            }
             Error::ChannelAlreadyExists(ref e) => format!("{} already exists.", e),
             Error::ChannelDoesNotExist(ref e) => format!("{} does not exist.", e),
             Error::HabitatCore(ref e) => format!("{}", e),
@@ -74,9 +84,12 @@ impl fmt::Display for Error {
                 )
             }
             Error::NulError(ref e) => format!("{}", e),
+            Error::ObjectError(ref e) => format!("{}", e),
             Error::PackageIsAlreadyInChannel(ref p, ref c) => {
                 format!("{} is already in the {} channel.", p, c)
             }
+            Error::PackageUpload(ref e) => format!("{}", e),
+            Error::PackageDownload(ref e) => format!("{}", e),
             Error::RemotePackageNotFound(ref pkg) => {
                 if pkg.fully_qualified() {
                     format!("Cannot find package in any sources: {}", pkg)
@@ -96,6 +109,8 @@ impl error::Error for Error {
     fn description(&self) -> &str {
         match *self {
             Error::BadPort(_) => "Received an invalid port or a number outside of the valid range.",
+            Error::BadBucket(ref err) => err.description(),
+            Error::CaughtPanic(_, _) => "Caught a panic.",
             Error::ChannelAlreadyExists(_) => "Channel already exists.",
             Error::ChannelDoesNotExist(_) => "Channel does not exist.",
             Error::HabitatCore(ref err) => err.description(),
@@ -109,7 +124,10 @@ impl error::Error for Error {
             Error::NulError(_) => {
                 "An attempt was made to build a CString with a null byte inside it"
             }
+            Error::ObjectError(ref err) => err.description(),
             Error::PackageIsAlreadyInChannel(_, _) => "Package is already in channel",
+            Error::PackageUpload(ref err) => err.description(),
+            Error::PackageDownload(ref err) => err.description(),
             Error::RemotePackageNotFound(_) => "Cannot find a package in any sources",
             Error::NoXFilename => "Invalid download from Builder - missing X-Filename header",
             Error::NoFilePart => {
@@ -150,5 +168,17 @@ impl From<hab_net::error::LibError> for Error {
 impl From<hab_net::NetError> for Error {
     fn from(err: hab_net::NetError) -> Error {
         Error::NetError(err)
+    }
+}
+
+impl From<rusoto_s3::ListBucketsError> for Error {
+    fn from(err: rusoto_s3::ListBucketsError) -> Error {
+        Error::BadBucket(err)
+    }
+}
+
+impl From<rusoto_s3::ListObjectsError> for Error {
+    fn from(err: rusoto_s3::ListObjectsError) -> Error {
+        Error::ObjectError(err)
     }
 }

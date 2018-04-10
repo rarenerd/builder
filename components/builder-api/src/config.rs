@@ -36,6 +36,7 @@ pub struct Config {
     pub github: Option<GitHubCfg>,
     pub bitbucket: Option<BitbucketCfg>,
     pub segment: SegmentCfg,
+    pub s3: depot::config::S3Cfg,
     pub ui: UiCfg,
     /// Depot's configuration
     pub depot: depot::config::Config,
@@ -56,6 +57,7 @@ impl Default for Config {
             routers: vec![RouterAddr::default()],
             github: None,
             bitbucket: None,
+            s3: depot::config::S3Cfg::default(),
             segment: SegmentCfg::default(),
             ui: UiCfg::default(),
             depot: depot::config::Config::default(),

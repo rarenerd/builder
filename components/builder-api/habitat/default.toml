@@ -26,6 +26,12 @@ builds_enabled          = true
 non_core_builds_enabled = true
 events_enabled          = false
 
+[s3]
+aws_key_id              = "XXXXXXXXXXXXXXXXXXXX"
+aws_secret_key          = "XXXXXxxXxXxXXXXxXXxXxXxxxxxXXxXXXxXxxXXx"
+aws_region              = "us-east-2"
+s3bucket                = "habitat-builder-artifact-store"
+
 [segment]
 url       = "https://api.segment.io"
 write_key = ""

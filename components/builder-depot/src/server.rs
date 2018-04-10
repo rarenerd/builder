@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fs::{self, File};
+use std::fs::{self, File, remove_file};
 use std::path::PathBuf;
 use std::io::{BufWriter, Read, Write};
 use std::result;
@@ -57,6 +57,7 @@ use super::DepotUtil;
 use error::{Error, Result};
 use metrics::Counter;
 use handlers;
+use backend::s3;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct OriginCreateReq {
@@ -830,10 +831,21 @@ fn upload_package(req: &mut Request) -> IronResult<Response> {
                 }
             }
         };
-
-    if origin_package_found && depot.archive(&ident, &target_from_artifact).is_some() {
-        return Ok(Response::with((status::Conflict)));
-    };
+    // If an S3 backend is set in the config file
+    // check whether the package already exists in
+    // the configured bucket, otherwise validate on disk
+    if origin_package_found {
+        let s3_config = depot.config.s3.clone();
+        let s3handler = s3::S3Handler::new(&s3_config);
+        match s3handler.exists(&ident, &target_from_artifact) {
+            Ok(pot_hocket) => {
+                if pot_hocket {
+                    return Ok(Response::with(status::Conflict));
+                }
+            }
+            Err(_) => return Ok(Response::with(status::InternalServerError)),
+        }
+    }
 
     let checksum_from_artifact = match archive.checksum() {
         Ok(cksum) => cksum,
@@ -890,6 +902,16 @@ fn upload_package(req: &mut Request) -> IronResult<Response> {
 
     let filename = depot.archive_path(&ident, &target_from_artifact);
 
+    let s3_config = depot.config.s3.clone();
+    let s3handler = s3::S3Handler::new(&s3_config);
+    let trident = ident.to_owned().into();
+    if s3handler
+        .upload(&temp_path, &trident, &target_from_artifact)
+        .is_err()
+    {
+        return Ok(Response::with(status::InternalServerError));
+    }
+
     match fs::rename(&temp_path, &filename) {
         Ok(_) => {}
         Err(e) => {
@@ -904,7 +926,7 @@ fn upload_package(req: &mut Request) -> IronResult<Response> {
     }
 
     info!("File added to Depot at {}", filename.to_string_lossy());
-    let mut archive = PackageArchive::new(filename);
+    let mut archive = PackageArchive::new(filename.clone());
     let mut package = match OriginPackageCreate::from_archive(&mut archive) {
         Ok(package) => package,
         Err(e) => {
@@ -1009,6 +1031,7 @@ fn upload_package(req: &mut Request) -> IronResult<Response> {
         response.headers.set(
             headers::Location(format!("{}", base_url)),
         );
+        let _cleanup = remove_file(&filename);
         Ok(response)
     } else {
         info!(
@@ -1301,7 +1324,7 @@ fn download_package(req: &mut Request) -> IronResult<Response> {
     let mut vis = visibility_for_optional_session(req, session_id, &ident.get_origin());
     vis.push(OriginPackageVisibility::Hidden);
     ident_req.set_visibilities(vis);
-    ident_req.set_ident(ident);
+    ident_req.set_ident(ident.clone());
 
     let agent_target = target_from_headers(&req.headers.get::<UserAgent>().unwrap()).unwrap();
     if !depot.config.targets.contains(&agent_target) {
@@ -1313,6 +1336,21 @@ fn download_package(req: &mut Request) -> IronResult<Response> {
 
     match route_message::<OriginPackageGet, OriginPackage>(req, &ident_req) {
         Ok(package) => {
+            let s3_config = depot.config.s3.clone();
+            let s3handler = s3::S3Handler::new(&s3_config);
+            let temp_path = depot.archive_path(package.get_ident(), &agent_target);
+            match s3handler.exists(package.get_ident(), &agent_target) {
+                Ok(_target) => {
+                    let trident = ident.to_owned().into();
+                    if s3handler
+                        .download(&temp_path, &trident, &agent_target)
+                        .is_err()
+                    {
+                        return Ok(Response::with(status::InternalServerError));
+                    }
+                }
+                Err(_) => return Ok(Response::with(status::NotFound)),
+            }
             if let Some(archive) = depot.archive(package.get_ident(), &agent_target) {
                 match fs::metadata(&archive.path) {
                     Ok(_) => {
@@ -1330,6 +1368,7 @@ fn download_package(req: &mut Request) -> IronResult<Response> {
                         };
                         response.headers.set(disp);
                         response.headers.set(XFileName(archive.file_name()));
+                        let _cleanup = remove_file(&archive.path);
                         Ok(response)
                     }
                     Err(_) => Ok(Response::with(status::NotFound)),
@@ -1840,7 +1879,7 @@ fn show_package(req: &mut Request) -> IronResult<Response> {
                 let target = target_from_headers(&req.headers.get::<UserAgent>().unwrap()).unwrap();
 
                 if !depot.archive(&ident, &target).is_some() {
-                    return Ok(Response::with((status::NotFound)));
+                    return Ok(Response::with(status::NotFound));
                 };
 
                 // If the request was for a fully qualified ident, cache the response, otherwise do
